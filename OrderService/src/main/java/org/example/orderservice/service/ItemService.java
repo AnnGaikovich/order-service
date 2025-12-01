@@ -9,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -48,16 +47,13 @@ public class ItemService {
         return itemMapper.toResponse(item);
     }
 
-    // НОВЫЙ МЕТОД: Обновление товара
     @Transactional
     public ItemResponseDTO updateItem(Long id, ItemRequestDTO itemRequest) {
         log.info("Updating item with id: {}", id);
 
-        // Находим существующий товар
         Item existingItem = itemRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Item not found with id: " + id));
 
-        // Обновляем только те поля, которые есть в вашей сущности
         if (itemRequest.getName() != null) {
             existingItem.setName(itemRequest.getName());
         }
@@ -65,19 +61,16 @@ public class ItemService {
             existingItem.setPrice(itemRequest.getPrice());
         }
 
-        // Сохраняем обновленный товар
         Item updatedItem = itemRepository.save(existingItem);
         log.info("Item updated successfully with id: {}", id);
 
         return itemMapper.toResponse(updatedItem);
     }
 
-    // НОВЫЙ МЕТОД: Удаление товара
     @Transactional
     public void deleteItem(Long id) {
         log.info("Deleting item with id: {}", id);
 
-        // Проверяем существование товара
         if (!itemRepository.existsById(id)) {
             throw new RuntimeException("Item not found with id: " + id);
         }

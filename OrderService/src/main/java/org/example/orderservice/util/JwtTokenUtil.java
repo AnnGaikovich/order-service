@@ -6,7 +6,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
-
 import java.io.InputStream;
 import java.security.KeyFactory;
 import java.security.PublicKey;
@@ -53,7 +52,6 @@ public class JwtTokenUtil {
                     .parseClaimsJws(cleanToken)
                     .getBody();
 
-            // Извлекаем userId из claims
             Object userIdClaim = claims.get("userId");
             if (userIdClaim instanceof Integer) {
                 return ((Integer) userIdClaim).longValue();
@@ -70,36 +68,6 @@ public class JwtTokenUtil {
         }
     }
 
-    public String extractUserEmailFromToken(String token) {
-        try {
-            String cleanToken = token.replace("Bearer ", "");
-            Claims claims = Jwts.parserBuilder()
-                    .setSigningKey(publicKey)
-                    .build()
-                    .parseClaimsJws(cleanToken)
-                    .getBody();
-
-            return claims.getSubject();
-        } catch (Exception e) {
-            log.error("Error extracting email from token: {}", e.getMessage());
-            throw new RuntimeException("Invalid or expired token: " + e.getMessage());
-        }
-    }
-
-    public boolean validateToken(String token) {
-        try {
-            String cleanToken = token.replace("Bearer ", "");
-            Jwts.parserBuilder()
-                    .setSigningKey(publicKey)
-                    .build()
-                    .parseClaimsJws(cleanToken);
-            return true;
-        } catch (Exception e) {
-            log.error("Invalid JWT token: {}", e.getMessage());
-            return false;
-        }
-    }
-
     public List<String> extractRolesFromToken(String token) {
         try {
             String cleanToken = token.replace("Bearer ", "");
@@ -109,7 +77,6 @@ public class JwtTokenUtil {
                     .parseClaimsJws(cleanToken)
                     .getBody();
 
-            // Извлекаем роли из claims
             @SuppressWarnings("unchecked")
             List<String> roles = claims.get("roles", List.class);
 

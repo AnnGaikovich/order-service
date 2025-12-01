@@ -49,13 +49,11 @@ public class ItemController {
         return ResponseEntity.ok(items);
     }
 
-    // GET BY ID - доступно всем аутентифицированным пользователям
     @GetMapping("/{id}")
     public ResponseEntity<ItemResponseDTO> getItem(
             @PathVariable Long id,
             @RequestHeader("Authorization") String authorizationHeader) {
 
-        // Просто проверяем валидность токена, но не требуем конкретных ролей
         jwtTokenUtil.extractUserIdFromToken(authorizationHeader); // Проверка валидности токена
         log.info("Received request to get item with id: {}", id);
 

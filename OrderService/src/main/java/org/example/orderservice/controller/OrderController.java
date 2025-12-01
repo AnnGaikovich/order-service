@@ -28,7 +28,6 @@ public class OrderController {
     private final OrderService orderService;
     private final JwtTokenUtil jwtTokenUtil;
 
-    // CREATE - пользователь создает заказ для себя
     @PostMapping
     public ResponseEntity<?> createOrder(
             @Valid @RequestBody OrderRequestDTO orderRequest,
@@ -51,7 +50,6 @@ public class OrderController {
         }
     }
 
-    // GET BY ID - админ: любой заказ, пользователь: только свой
     @GetMapping("/{id}")
     public ResponseEntity<OrderResponseDTO> getOrder(
             @PathVariable Long id,
@@ -64,17 +62,14 @@ public class OrderController {
 
         OrderResponseDTO orderResponse;
         if (roles.contains("ROLE_ADMIN")) {
-            // Админ может получить любой заказ
             orderResponse = orderService.getOrderById(id);
         } else {
-            // Пользователь только свой заказ
             orderResponse = orderService.getOrderByIdAndUser(id, userId);
         }
 
         return ResponseEntity.ok(orderResponse);
     }
 
-    // GET ALL WITH FILTERS - админ: все заказы, пользователь: только свои
     @GetMapping
     public ResponseEntity<Page<OrderResponseDTO>> getOrders(
             @RequestHeader("Authorization") String authorizationHeader,
@@ -97,17 +92,14 @@ public class OrderController {
 
         Page<OrderResponseDTO> orders;
         if (roles.contains("ROLE_ADMIN")) {
-            // Админ видит все заказы
             orders = orderService.getAllOrdersWithFilter(startDate, endDate, statuses, pageable);
         } else {
-            // Пользователь видит только свои заказы
             orders = orderService.getOrdersByUserWithFilter(userId, startDate, endDate, statuses, pageable);
         }
 
         return ResponseEntity.ok(orders);
     }
 
-    // GET ORDERS BY USER - админ: любые заказы, пользователь: только свои
     @GetMapping("/user/{targetUserId}")
     public ResponseEntity<List<OrderResponseDTO>> getOrdersByUser(
             @PathVariable Long targetUserId,
@@ -119,7 +111,6 @@ public class OrderController {
         log.info("Received request to get orders for user: {} from user: {} with roles: {}",
                 targetUserId, authenticatedUserId, roles);
 
-        // Проверяем права доступа
         if (!roles.contains("ROLE_ADMIN") && !authenticatedUserId.equals(targetUserId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
@@ -128,7 +119,6 @@ public class OrderController {
         return ResponseEntity.ok(orders);
     }
 
-    // UPDATE - админ: любой заказ, пользователь: только свой
     @PutMapping("/{id}")
     public ResponseEntity<OrderResponseDTO> updateOrder(
             @PathVariable Long id,
@@ -142,17 +132,14 @@ public class OrderController {
 
         OrderResponseDTO orderResponse;
         if (roles.contains("ROLE_ADMIN")) {
-            // Админ может обновить любой заказ
             orderResponse = orderService.updateOrder(id, orderRequest);
         } else {
-            // Пользователь только свой заказ
             orderResponse = orderService.updateOrder(id, userId, orderRequest);
         }
 
         return ResponseEntity.ok(orderResponse);
     }
 
-    // DELETE - админ: любой заказ, пользователь: только свой
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteOrder(
             @PathVariable Long id,
@@ -164,10 +151,8 @@ public class OrderController {
         log.info("Received request to delete order with id: {} from user: {} with roles: {}", id, userId, roles);
 
         if (roles.contains("ROLE_ADMIN")) {
-            // Админ может удалить любой заказ
             orderService.deleteOrder(id);
         } else {
-            // Пользователь только свой заказ
             orderService.deleteOrder(id, userId);
         }
 

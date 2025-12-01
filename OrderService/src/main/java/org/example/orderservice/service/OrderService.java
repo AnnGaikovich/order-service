@@ -35,7 +35,6 @@ public class OrderService {
     public OrderResponseDTO createOrder(Long userId, OrderRequestDTO orderRequest) {
         log.info("Creating order for user from token: {}", userId);
 
-        // Проверяем существование товаров
         if (orderRequest.getOrderItems() != null) {
             for (OrderItemRequestDTO itemRequest : orderRequest.getOrderItems()) {
                 if (!itemRepository.existsById(itemRequest.getItemId())) {
@@ -45,7 +44,7 @@ public class OrderService {
         }
 
         Order order = orderMapper.toEntity(orderRequest);
-        order.setUserId(userId); // Сохраняем userId из токена
+        order.setUserId(userId);
 
         if (orderRequest.getOrderItems() != null) {
             List<OrderItem> orderItems = orderRequest.getOrderItems().stream()
@@ -167,13 +166,11 @@ public class OrderService {
     private OrderResponseDTO enrichOrderWithUserInfo(Order order) {
         OrderResponseDTO response = orderMapper.toResponse(order);
         try {
-            // ВАЖНО: Общаемся с UserService для получения реальных данных пользователя
             UserInfoDTO userInfo = userInfoService.getUserById(order.getUserId());
             response.setUserInfo(userInfo);
         } catch (Exception e) {
             log.error("Failed to fetch user info for userId: {}", order.getUserId(), e);
-            // Не бросаем исключение, а просто логируем ошибку
-            // Response все равно вернется, но без userInfo или с дефолтными значениями из fallback
+
         }
         return response;
     }
