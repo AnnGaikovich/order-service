@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  order-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: order-service-application
+    ports:
+      - "8081:8081"
+    environment:
+      - SERVER_PORT=8081
+      - APPLICATION_NAME=OrderService
+      - DB_URL=jdbc:postgresql://order-db:5432/order_service_db
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=123456
+      - DB_DRIVER=org.postgresql.Driver
+      - DB_DIALECT=org.hibernate.dialect.PostgreSQLDialect
+      - SHOW_SQL=false
+      - FORMAT_SQL=true
+      - SPRING_LIQUIBASE_ENABLED=true
+      - SPRING_LIQUIBASE_CHANGE_LOG=classpath:/db/changelog/db.changelog-master.yaml
+      - LOG_SQL=DEBUG
+      - USER_SERVICE_URL=http://user-service:8080
+      - USER_SERVICE_URL=http://host.docker.internal:8080
+      - USER_SERVICE_API_KEY=internal-auth-key-12345
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=none
+      - SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT=30000
+      - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=10
+    depends_on:
+      order-db:
+        condition: service_healthy
+    volumes:
+      - ./src/main/resources/keys:/app/keys
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  order-db:
+    image: postgres:15-alpine
+    container_name: order-service-postgres
+    environment:
+      POSTGRES_DB: order_service_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_order_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d order_service_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_order_data:
+
+networks:
+  microservices-network:
+    driver: bridge
