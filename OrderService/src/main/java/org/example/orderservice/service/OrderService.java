@@ -1,11 +1,12 @@
 package org.example.orderservice.service;
 
-import org.example.orderservice.dto.OrderItemRequestDTO;
-import org.example.orderservice.dto.OrderRequestDTO;
-import org.example.orderservice.dto.OrderResponseDTO;
-import org.example.orderservice.dto.UserInfoDTO;
+import org.example.orderservice.dto.*;
+import org.example.orderservice.entity.Item;
 import org.example.orderservice.entity.Order;
 import org.example.orderservice.entity.OrderItem;
+import org.example.orderservice.enums.OrderStatus;
+import org.example.orderservice.exception.*;
+import org.example.orderservice.mapper.OrderItemMapper;
 import org.example.orderservice.mapper.OrderMapper;
 import org.example.orderservice.repository.ItemRepository;
 import org.example.orderservice.repository.OrderRepository;
@@ -17,8 +18,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -30,29 +34,47 @@ public class OrderService {
     private final OrderMapper orderMapper;
     private final UserInfoService userInfoService;
     private final ItemRepository itemRepository;
+    private final OrderItemMapper orderItemMapper;
 
     @Transactional
     public OrderResponseDTO createOrder(Long userId, OrderRequestDTO orderRequest) {
         log.info("Creating order for user from token: {}", userId);
 
-        if (orderRequest.getOrderItems() != null) {
-            for (OrderItemRequestDTO itemRequest : orderRequest.getOrderItems()) {
-                if (!itemRepository.existsById(itemRequest.getItemId())) {
-                    throw new RuntimeException("Item not found with id: " + itemRequest.getItemId());
-                }
+        List<Long> itemIds = orderRequest.getOrderItems().stream()
+                .map(OrderItemRequestDTO::getItemId)
+                .collect(Collectors.toList());
+
+        Map<Long, Item> items = itemRepository.findAllById(itemIds).stream()
+                .collect(Collectors.toMap(Item::getId, Function.identity()));
+
+        for (OrderItemRequestDTO itemRequest : orderRequest.getOrderItems()) {
+            if (!items.containsKey(itemRequest.getItemId())) {
+                throw new ResourceNotFoundException("Item not found with id: " + itemRequest.getItemId());
             }
         }
 
-        Order order = orderMapper.toEntity(orderRequest);
+        Order order = new Order();
         order.setUserId(userId);
+        order.setStatus(OrderStatus.PENDING);
+        order.setDeleted(false);
 
-        if (orderRequest.getOrderItems() != null) {
-            List<OrderItem> orderItems = orderRequest.getOrderItems().stream()
-                    .map(orderMapper::toEntity)
-                    .peek(orderItem -> orderItem.setOrder(order))
-                    .collect(Collectors.toList());
-            order.setOrderItems(orderItems);
+        BigDecimal totalPrice = BigDecimal.ZERO;
+
+        for (OrderItemRequestDTO itemRequest : orderRequest.getOrderItems()) {
+            Item item = items.get(itemRequest.getItemId());
+            OrderItem orderItem = new OrderItem();
+            orderItem.setItemId(item.getId());
+            orderItem.setQuantity(itemRequest.getQuantity());
+            orderItem.setOrder(order);
+
+            BigDecimal itemTotal = item.getPrice().multiply(BigDecimal.valueOf(itemRequest.getQuantity()));
+
+            totalPrice = totalPrice.add(itemTotal);
+
+            order.getOrderItems().add(orderItem);
         }
+
+        order.setTotalPrice(totalPrice);
 
         Order savedOrder = orderRepository.save(order);
         log.info("Order created successfully with id: {}", savedOrder.getId());
@@ -64,7 +86,7 @@ public class OrderService {
     public OrderResponseDTO getOrderById(Long id) {
         log.info("Fetching order with id: {}", id);
         Order order = orderRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + id));
         return enrichOrderWithUserInfo(order);
     }
 
@@ -72,7 +94,8 @@ public class OrderService {
     public OrderResponseDTO getOrderByIdAndUser(Long orderId, Long userId) {
         log.info("Fetching order with id: {} for user: {}", orderId, userId);
         Order order = orderRepository.findByIdAndUserIdAndDeletedFalse(orderId, userId)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId + " for user: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Order not found with id: " + orderId + " for user: " + userId));
         return enrichOrderWithUserInfo(order);
     }
 
@@ -90,23 +113,9 @@ public class OrderService {
         log.info("Updating order with id: {}", id);
 
         Order existingOrder = orderRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + id));
 
-        if (orderRequest.getStatus() != null) {
-            existingOrder.setStatus(orderRequest.getStatus());
-        }
-        if (orderRequest.getTotalPrice() != null) {
-            existingOrder.setTotalPrice(orderRequest.getTotalPrice());
-        }
-
-        if (orderRequest.getOrderItems() != null) {
-            existingOrder.getOrderItems().clear();
-            List<OrderItem> orderItems = orderRequest.getOrderItems().stream()
-                    .map(orderMapper::toEntity)
-                    .peek(orderItem -> orderItem.setOrder(existingOrder))
-                    .collect(Collectors.toList());
-            existingOrder.setOrderItems(orderItems);
-        }
+        updateOrderFromRequest(existingOrder, orderRequest);
 
         Order updatedOrder = orderRepository.save(existingOrder);
         log.info("Order updated successfully with id: {}", id);
@@ -119,23 +128,10 @@ public class OrderService {
         log.info("Updating order with id: {} for user: {}", orderId, userId);
 
         Order existingOrder = orderRepository.findByIdAndUserIdAndDeletedFalse(orderId, userId)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId + " for user: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Order not found with id: " + orderId + " for user: " + userId));
 
-        if (orderRequest.getStatus() != null) {
-            existingOrder.setStatus(orderRequest.getStatus());
-        }
-        if (orderRequest.getTotalPrice() != null) {
-            existingOrder.setTotalPrice(orderRequest.getTotalPrice());
-        }
-
-        if (orderRequest.getOrderItems() != null) {
-            existingOrder.getOrderItems().clear();
-            List<OrderItem> orderItems = orderRequest.getOrderItems().stream()
-                    .map(orderMapper::toEntity)
-                    .peek(orderItem -> orderItem.setOrder(existingOrder))
-                    .collect(Collectors.toList());
-            existingOrder.setOrderItems(orderItems);
-        }
+        updateOrderFromRequest(existingOrder, orderRequest);
 
         Order updatedOrder = orderRepository.save(existingOrder);
         log.info("Order updated successfully with id: {}", orderId);
@@ -143,11 +139,57 @@ public class OrderService {
         return enrichOrderWithUserInfo(updatedOrder);
     }
 
+    private void updateOrderFromRequest(Order order, OrderRequestDTO orderRequest) {
+        if (orderRequest.getStatus() != null) {
+            try {
+                OrderStatus status = OrderStatus.valueOf(orderRequest.getStatus());
+                order.setStatus(status);
+            } catch (IllegalArgumentException e) {
+                throw new ValidationException("Invalid order status: " + orderRequest.getStatus());
+            }
+        }
+
+        if (orderRequest.getOrderItems() != null && !orderRequest.getOrderItems().isEmpty()) {
+
+            List<Long> itemIds = orderRequest.getOrderItems().stream()
+                    .map(OrderItemRequestDTO::getItemId)
+                    .collect(Collectors.toList());
+
+            Map<Long, Item> items = itemRepository.findAllById(itemIds).stream()
+                    .collect(Collectors.toMap(Item::getId, Function.identity()));
+
+            for (OrderItemRequestDTO itemRequest : orderRequest.getOrderItems()) {
+                if (!items.containsKey(itemRequest.getItemId())) {
+                    throw new ResourceNotFoundException("Item not found with id: " + itemRequest.getItemId());
+                }
+            }
+
+            order.getOrderItems().clear();
+
+            BigDecimal totalPrice = BigDecimal.ZERO;
+
+            for (OrderItemRequestDTO itemRequest : orderRequest.getOrderItems()) {
+                Item item = items.get(itemRequest.getItemId());
+                OrderItem orderItem = new OrderItem();
+                orderItem.setItemId(item.getId());
+                orderItem.setQuantity(itemRequest.getQuantity());
+                orderItem.setOrder(order);
+
+                BigDecimal itemTotal = item.getPrice().multiply(BigDecimal.valueOf(itemRequest.getQuantity()));
+                totalPrice = totalPrice.add(itemTotal);
+
+                order.getOrderItems().add(orderItem);
+            }
+
+            order.setTotalPrice(totalPrice);
+        }
+    }
+
     @Transactional
     public void deleteOrder(Long id) {
         log.info("Soft deleting order with id: {}", id);
         Order order = orderRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + id));
         order.softDelete();
         orderRepository.save(order);
         log.info("Order soft deleted successfully with id: {}", id);
@@ -157,7 +199,8 @@ public class OrderService {
     public void deleteOrder(Long orderId, Long userId) {
         log.info("Soft deleting order with id: {} for user: {}", orderId, userId);
         Order order = orderRepository.findByIdAndUserIdAndDeletedFalse(orderId, userId)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId + " for user: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Order not found with id: " + orderId + " for user: " + userId));
         order.softDelete();
         orderRepository.save(order);
         log.info("Order soft deleted successfully with id: {}", orderId);
@@ -165,24 +208,73 @@ public class OrderService {
 
     private OrderResponseDTO enrichOrderWithUserInfo(Order order) {
         OrderResponseDTO response = orderMapper.toResponse(order);
-        try {
-            UserInfoDTO userInfo = userInfoService.getUserById(order.getUserId());
-            response.setUserInfo(userInfo);
-        } catch (Exception e) {
-            log.error("Failed to fetch user info for userId: {}", order.getUserId(), e);
 
+        if (order.getOrderItems() != null && !order.getOrderItems().isEmpty()) {
+            List<OrderItemResponseDTO> enrichedItems = enrichOrderItems(order);
+            response.setOrderItems(enrichedItems);
         }
+
+        UserInfoDTO userInfo = userInfoService.getUserById(order.getUserId());
+        response.setUserInfo(userInfo);
         return response;
     }
+
+    private List<OrderItemResponseDTO> enrichOrderItems(Order order) {
+
+        List<Long> itemIds = order.getOrderItems().stream()
+                .map(OrderItem::getItemId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<Long, Item> itemsMap = itemRepository.findAllById(itemIds).stream()
+                .collect(Collectors.toMap(Item::getId, Function.identity()));
+
+        return order.getOrderItems().stream()
+                .map(orderItem -> {
+                    OrderItemResponseDTO dto = orderItemMapper.toResponse(orderItem);
+
+                    Item item = itemsMap.get(orderItem.getItemId());
+                    if (item != null) {
+                        dto.setItemName(item.getName());
+                        dto.setItemPrice(item.getPrice());
+                        dto.setSubtotal(item.getPrice().multiply(
+                                BigDecimal.valueOf(orderItem.getQuantity())
+                        ));
+                    } else {
+                        log.warn("Item with id {} not found for order {}",
+                                orderItem.getItemId(), order.getId());
+                        dto.setItemName("Unknown Item");
+                        dto.setItemPrice(BigDecimal.ZERO);
+                        dto.setSubtotal(BigDecimal.ZERO);
+                    }
+
+                    return dto;
+                })
+                .collect(Collectors.toList());
+    }
+
     @Transactional(readOnly = true)
     public Page<OrderResponseDTO> getOrdersByUserWithFilter(Long userId, LocalDateTime startDate, LocalDateTime endDate,
                                                             List<String> statuses, Pageable pageable) {
         log.info("Fetching orders for user: {} with filters", userId);
 
+        List<OrderStatus> orderStatuses = null;
+        if (statuses != null && !statuses.isEmpty()) {
+            orderStatuses = statuses.stream()
+                    .map(status -> {
+                        try {
+                            return OrderStatus.valueOf(status);
+                        } catch (IllegalArgumentException e) {
+                            throw new ValidationException("Invalid order status in filter: " + status);
+                        }
+                    })
+                    .collect(Collectors.toList());
+        }
+
         Specification<Order> spec = Specification.where(OrderSpecifications.notDeleted())
                 .and(OrderSpecifications.hasUserId(userId))
                 .and(OrderSpecifications.createdAtBetween(startDate, endDate))
-                .and(OrderSpecifications.hasStatusIn(statuses));
+                .and(OrderSpecifications.hasStatusIn(orderStatuses));
 
         Page<Order> orders = orderRepository.findAll(spec, pageable);
         return orders.map(this::enrichOrderWithUserInfo);
@@ -194,9 +286,22 @@ public class OrderService {
         log.info("Fetching ALL orders with filters - startDate: {}, endDate: {}, statuses: {}",
                 startDate, endDate, statuses);
 
+        List<OrderStatus> orderStatuses = null;
+        if (statuses != null && !statuses.isEmpty()) {
+            orderStatuses = statuses.stream()
+                    .map(status -> {
+                        try {
+                            return OrderStatus.valueOf(status);
+                        } catch (IllegalArgumentException e) {
+                            throw new ValidationException("Invalid order status in filter: " + status);
+                        }
+                    })
+                    .collect(Collectors.toList());
+        }
+
         Specification<Order> spec = Specification.where(OrderSpecifications.notDeleted())
                 .and(OrderSpecifications.createdAtBetween(startDate, endDate))
-                .and(OrderSpecifications.hasStatusIn(statuses));
+                .and(OrderSpecifications.hasStatusIn(orderStatuses));
 
         Page<Order> orders = orderRepository.findAll(spec, pageable);
         return orders.map(this::enrichOrderWithUserInfo);

@@ -3,6 +3,7 @@ package org.example.orderservice.service;
 import org.example.orderservice.dto.ItemRequestDTO;
 import org.example.orderservice.dto.ItemResponseDTO;
 import org.example.orderservice.entity.Item;
+import org.example.orderservice.exception.ResourceNotFoundException;
 import org.example.orderservice.mapper.ItemMapper;
 import org.example.orderservice.repository.ItemRepository;
 import lombok.RequiredArgsConstructor;
@@ -43,7 +44,7 @@ public class ItemService {
     public ItemResponseDTO getItemById(Long id) {
         log.info("Fetching item with id: {}", id);
         Item item = itemRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Item not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Item not found with id: " + id));
         return itemMapper.toResponse(item);
     }
 
@@ -52,7 +53,7 @@ public class ItemService {
         log.info("Updating item with id: {}", id);
 
         Item existingItem = itemRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Item not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Item not found with id: " + id));
 
         if (itemRequest.getName() != null) {
             existingItem.setName(itemRequest.getName());
@@ -72,7 +73,7 @@ public class ItemService {
         log.info("Deleting item with id: {}", id);
 
         if (!itemRepository.existsById(id)) {
-            throw new RuntimeException("Item not found with id: " + id);
+            throw new ResourceNotFoundException("Item not found with id: " + id);
         }
 
         itemRepository.deleteById(id);

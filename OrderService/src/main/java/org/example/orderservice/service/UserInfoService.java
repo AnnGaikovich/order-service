@@ -21,23 +21,4 @@ public class UserInfoService {
         log.info("Successfully fetched user info: {}", userInfo);
         return userInfo;
     }
-
-    public UserInfoDTO getUserByIdFallback(Long userId, Exception ex) {
-        log.warn("Circuit Breaker fallback triggered for getUserById({}), exception: {}", userId, ex.getMessage());
-        UserInfoDTO defaultUser = createDefaultUser(userId);
-        log.info("Returning default user: {}", defaultUser);
-        return defaultUser;
-    }
-
-    private UserInfoDTO createDefaultUser(Long userId) {
-        UserInfoDTO defaultUser = new UserInfoDTO();
-        if (userId != null) {
-            defaultUser.setId(userId);
-        }
-        defaultUser.setEmail("unavailable@example.com");
-        defaultUser.setName("Service");
-        defaultUser.setSurname("Unavailable");
-        defaultUser.setActive(false);
-        return defaultUser;
-    }
 }

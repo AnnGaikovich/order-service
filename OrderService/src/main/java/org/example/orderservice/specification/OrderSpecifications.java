@@ -1,6 +1,7 @@
 package org.example.orderservice.specification;
 
 import org.example.orderservice.entity.Order;
+import org.example.orderservice.enums.OrderStatus;
 import org.springframework.data.jpa.domain.Specification;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -12,7 +13,7 @@ public class OrderSpecifications {
                 criteriaBuilder.equal(root.get("deleted"), false);
     }
 
-    public static Specification<Order> hasStatusIn(List<String> statuses) {
+    public static Specification<Order> hasStatusIn(List<OrderStatus> statuses) {
         return (root, query, criteriaBuilder) ->
                 statuses != null && !statuses.isEmpty() ?
                         root.get("status").in(statuses) :

@@ -2,6 +2,7 @@ package org.example.orderservice.entity;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.example.orderservice.enums.OrderStatus;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -28,8 +29,9 @@ public class Order {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status; // PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
+    private OrderStatus status; // PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
 
     @Column(name = "total_price", precision = 10, scale = 2)
     private BigDecimal totalPrice;
@@ -47,16 +49,6 @@ public class Order {
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItem> orderItems = new ArrayList<>();
-
-    public void addOrderItem(OrderItem orderItem) {
-        orderItems.add(orderItem);
-        orderItem.setOrder(this);
-    }
-
-    public void removeOrderItem(OrderItem orderItem) {
-        orderItems.remove(orderItem);
-        orderItem.setOrder(null);
-    }
 
     public void softDelete() {
         this.deleted = true;

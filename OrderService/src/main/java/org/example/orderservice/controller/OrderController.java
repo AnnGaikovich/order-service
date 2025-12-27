@@ -2,12 +2,11 @@ package org.example.orderservice.controller;
 
 import org.example.orderservice.dto.OrderRequestDTO;
 import org.example.orderservice.dto.OrderResponseDTO;
-import org.example.orderservice.exception.ErrorResponse;
 import org.example.orderservice.service.OrderService;
-import org.example.orderservice.util.JwtTokenUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.orderservice.auth.util.SecurityUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -15,6 +14,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -26,42 +26,28 @@ import java.util.List;
 public class OrderController {
 
     private final OrderService orderService;
-    private final JwtTokenUtil jwtTokenUtil;
 
     @PostMapping
-    public ResponseEntity<?> createOrder(
-            @Valid @RequestBody OrderRequestDTO orderRequest,
-            @RequestHeader("Authorization") String authorizationHeader) {
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
+    public ResponseEntity<OrderResponseDTO> createOrder(
+            @Valid @RequestBody OrderRequestDTO orderRequest) {
 
-        try {
-            Long userId = jwtTokenUtil.extractUserIdFromToken(authorizationHeader);
-            List<String> roles = jwtTokenUtil.extractRolesFromToken(authorizationHeader);
+        Long userId = SecurityUtils.getCurrentUserId();
+        log.info("Received request to create order for user: {}", userId);
 
-            log.info("Received request to create order for user: {} with roles: {}", userId, roles);
-
-            OrderResponseDTO orderResponse = orderService.createOrder(userId, orderRequest);
-            return ResponseEntity.status(HttpStatus.CREATED).body(orderResponse);
-        } catch (RuntimeException ex) {
-            if (ex.getMessage().contains("Invalid or expired token")) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(new ErrorResponse(HttpStatus.UNAUTHORIZED.value(), ex.getMessage(), LocalDateTime.now()));
-            }
-            throw ex;
-        }
+        OrderResponseDTO orderResponse = orderService.createOrder(userId, orderRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(orderResponse);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<OrderResponseDTO> getOrder(
-            @PathVariable Long id,
-            @RequestHeader("Authorization") String authorizationHeader) {
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
+    public ResponseEntity<OrderResponseDTO> getOrder(@PathVariable Long id) {
 
-        Long userId = jwtTokenUtil.extractUserIdFromToken(authorizationHeader);
-        List<String> roles = jwtTokenUtil.extractRolesFromToken(authorizationHeader);
-
-        log.info("Received request to get order with id: {} from user: {} with roles: {}", id, userId, roles);
+        Long userId = SecurityUtils.getCurrentUserId();
+        log.info("Received request to get order with id: {} from user: {}", id, userId);
 
         OrderResponseDTO orderResponse;
-        if (roles.contains("ROLE_ADMIN")) {
+        if (SecurityUtils.isAdmin()) {
             orderResponse = orderService.getOrderById(id);
         } else {
             orderResponse = orderService.getOrderByIdAndUser(id, userId);
@@ -71,8 +57,8 @@ public class OrderController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     public ResponseEntity<Page<OrderResponseDTO>> getOrders(
-            @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
             @RequestParam(required = false) List<String> statuses,
@@ -81,17 +67,15 @@ public class OrderController {
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "asc") String direction) {
 
-        Long userId = jwtTokenUtil.extractUserIdFromToken(authorizationHeader);
-        List<String> roles = jwtTokenUtil.extractRolesFromToken(authorizationHeader);
-
-        log.info("Received request to get orders from user: {} with roles: {}", userId, roles);
+        Long userId = SecurityUtils.getCurrentUserId();
+        log.info("Received request to get orders from user: {}", userId);
 
         Sort sort = direction.equalsIgnoreCase("desc") ?
                 Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<OrderResponseDTO> orders;
-        if (roles.contains("ROLE_ADMIN")) {
+        if (SecurityUtils.isAdmin()) {
             orders = orderService.getAllOrdersWithFilter(startDate, endDate, statuses, pageable);
         } else {
             orders = orderService.getOrdersByUserWithFilter(userId, startDate, endDate, statuses, pageable);
@@ -101,17 +85,15 @@ public class OrderController {
     }
 
     @GetMapping("/user/{targetUserId}")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     public ResponseEntity<List<OrderResponseDTO>> getOrdersByUser(
-            @PathVariable Long targetUserId,
-            @RequestHeader("Authorization") String authorizationHeader) {
+            @PathVariable Long targetUserId) {
 
-        Long authenticatedUserId = jwtTokenUtil.extractUserIdFromToken(authorizationHeader);
-        List<String> roles = jwtTokenUtil.extractRolesFromToken(authorizationHeader);
+        Long authenticatedUserId = SecurityUtils.getCurrentUserId();
+        log.info("Received request to get orders for user: {} from user: {}",
+                targetUserId, authenticatedUserId);
 
-        log.info("Received request to get orders for user: {} from user: {} with roles: {}",
-                targetUserId, authenticatedUserId, roles);
-
-        if (!roles.contains("ROLE_ADMIN") && !authenticatedUserId.equals(targetUserId)) {
+        if (!SecurityUtils.isAdmin() && !authenticatedUserId.equals(targetUserId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
@@ -120,18 +102,16 @@ public class OrderController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     public ResponseEntity<OrderResponseDTO> updateOrder(
             @PathVariable Long id,
-            @Valid @RequestBody OrderRequestDTO orderRequest,
-            @RequestHeader("Authorization") String authorizationHeader) {
+            @Valid @RequestBody OrderRequestDTO orderRequest) {
 
-        Long userId = jwtTokenUtil.extractUserIdFromToken(authorizationHeader);
-        List<String> roles = jwtTokenUtil.extractRolesFromToken(authorizationHeader);
-
-        log.info("Received request to update order with id: {} from user: {} with roles: {}", id, userId, roles);
+        Long userId = SecurityUtils.getCurrentUserId();
+        log.info("Received request to update order with id: {} from user: {}", id, userId);
 
         OrderResponseDTO orderResponse;
-        if (roles.contains("ROLE_ADMIN")) {
+        if (SecurityUtils.isAdmin()) {
             orderResponse = orderService.updateOrder(id, orderRequest);
         } else {
             orderResponse = orderService.updateOrder(id, userId, orderRequest);
@@ -141,16 +121,13 @@ public class OrderController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteOrder(
-            @PathVariable Long id,
-            @RequestHeader("Authorization") String authorizationHeader) {
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
+    public ResponseEntity<Void> deleteOrder(@PathVariable Long id) {
 
-        Long userId = jwtTokenUtil.extractUserIdFromToken(authorizationHeader);
-        List<String> roles = jwtTokenUtil.extractRolesFromToken(authorizationHeader);
+        Long userId = SecurityUtils.getCurrentUserId();
+        log.info("Received request to delete order with id: {} from user: {}", id, userId);
 
-        log.info("Received request to delete order with id: {} from user: {} with roles: {}", id, userId, roles);
-
-        if (roles.contains("ROLE_ADMIN")) {
+        if (SecurityUtils.isAdmin()) {
             orderService.deleteOrder(id);
         } else {
             orderService.deleteOrder(id, userId);
