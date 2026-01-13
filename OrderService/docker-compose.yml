@@ -1,10 +1,8 @@
-version: '3.8'
-
 services:
   order-service:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
     container_name: order-service-application
     ports:
       - "8081:8081"
@@ -27,6 +25,7 @@ services:
       - SPRING_JPA_HIBERNATE_DDL_AUTO=none
       - SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT=30000
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=10
+      - KAFKA_BOOTSTRAP_SERVERS=localhost:9092
     depends_on:
       order-db:
         condition: service_healthy
@@ -34,12 +33,6 @@ services:
       - ./src/main/resources/keys:/app/keys
     networks:
       - microservices-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   order-db:
     image: postgres:15-alpine
@@ -65,4 +58,6 @@ volumes:
 
 networks:
   microservices-network:
+    external: true
+    name: microservices-network
     driver: bridge

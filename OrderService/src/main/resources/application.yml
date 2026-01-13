@@ -4,6 +4,17 @@ server:
 spring:
   main:
     allow-bean-definition-overriding: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: order-service-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.type.mapping: paymentEvent:org.example.orderservice.dto.PaymentEventDTO
+        spring.json.trusted.packages: "*"
+    listener:
+      missing-topics-fatal: false
 
   application:
     name: ${APPLICATION_NAME:OrderService}

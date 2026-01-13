@@ -306,4 +306,9 @@ public class OrderService {
         Page<Order> orders = orderRepository.findAll(spec, pageable);
         return orders.map(this::enrichOrderWithUserInfo);
     }
+
+    @Transactional(readOnly = true)
+    public boolean existsById(Long id) {
+        return orderRepository.existsById(id);
+    }
 }

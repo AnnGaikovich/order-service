@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.orderservice.auth.util.SecurityUtils;
+import org.hibernate.annotations.Parameter;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -134,5 +135,13 @@ public class OrderController {
         }
 
         return ResponseEntity.noContent().build();
+    }
+
+
+    @GetMapping("/{orderId}/exists")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
+    public ResponseEntity<Boolean> existsById(@PathVariable Long orderId) {
+        boolean exists = orderService.existsById(orderId);
+        return ResponseEntity.ok(exists);
     }
 }
