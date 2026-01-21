@@ -1,0 +1,124 @@
+services:
+  order-service:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: order-service-application
+    ports:
+      - "8081:8081"
+    environment:
+      - SERVER_PORT=8081
+      - APPLICATION_NAME=OrderService
+      - DB_URL=jdbc:postgresql://order-db:5432/order_service_db
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=123456
+      - DB_DRIVER=org.postgresql.Driver
+      - DB_DIALECT=org.hibernate.dialect.PostgreSQLDialect
+      - SHOW_SQL=false
+      - FORMAT_SQL=true
+      - SPRING_LIQUIBASE_ENABLED=true
+      - SPRING_LIQUIBASE_CHANGE_LOG=classpath:/db/changelog/db.changelog-master.yaml
+      - LOG_SQL=DEBUG
+      - USER_SERVICE_URL=http://user-service:8080
+      - USER_SERVICE_URL=http://host.docker.internal:8080
+      - USER_SERVICE_API_KEY=internal-auth-key-12345
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=none
+      - SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT=30000
+      - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=10
+      - KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+    depends_on:
+      order-db:
+        condition: service_healthy
+    volumes:
+      - ./src/main/resources/keys:/app/keys
+    networks:
+      - microservices-network
+
+  order-db:
+    image: postgres:15-alpine
+    container_name: order-service-postgres
+    environment:
+      POSTGRES_DB: order_service_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_order_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d order_service_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: order-service-prometheus
+    ports:
+      - "9092:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-lifecycle'
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: order-service-loki
+    ports:
+      - "3102:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.2.2
+    container_name: order-service-tempo
+    ports:
+      - "3202:81"
+      - "4319:4317"
+      - "4320:4318"
+    command:
+      - "--storage.trace.backend=local"
+      - "--storage.trace.local.path=/tmp/tempo/blocks"
+      - "--storage.trace.wal.path=/tmp/tempo/wal"
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: order-service-grafana
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    restart: unless-stopped
+
+volumes:
+  postgres_order_data:
+  prometheus_data:
+  loki_data:
+  tempo_data:
+  grafana_data:
+
+networks:
+  microservices-network:
+    external: true
+    name: microservices-network
+    driver: bridge
+  monitoring:
+    driver: bridge
+    name: user-service-monitoring
